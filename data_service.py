@@ -53,7 +53,7 @@ def _load_instrument_map() -> dict:
         return _INSTRUMENT_MAP
 
     # 3. Download fresh
-    url = "https://assets.upstox.com/market-quote/instruments/exchange/NSE.csv.gz"
+    url = "https://assets.upstox.com/market-quote/instruments/exchange/complete.csv.gz"
     try:
         df = pd.read_csv(url, compression="gzip")
         # Columns: instrument_key, exchange, tradingsymbol, name, ...
@@ -82,7 +82,7 @@ def _get_instrument_key(symbol_ns: str, instrument_map: dict) -> str | None:
 # SECTION B ─ UPSTOX HISTORICAL DATA FETCHER (LIVE)
 # ─────────────────────────────────────────────────────────────
 UPSTOX_HIST_URL = (
-    "https://api.upstox.com/v2/historical-candle"
+    "https://api.upstox.com/v3/historical-candle"
     "/{instrument_key}/{interval}/{to_date}/{from_date}"
 )
 
@@ -114,7 +114,7 @@ def _fetch_upstox_history_live(
     # URL-encode the pipe character in instrument_key
     encoded_key = instrument_key.replace("|", "%7C")
     url = (
-        f"https://api.upstox.com/v2/historical-candle"
+        f"https://api.upstox.com/v3/historical-candle"
         f"/{encoded_key}/{interval}/{to_date_str}/{from_date_str}"
     )
 
