@@ -182,7 +182,7 @@ def app_content():
     # ── ✨ NEW: Data Source dropdown ──────────────────────────────
     #    Phase-1: YFinance = live data; Upstox & Zerodha = mock data
     #    Phase-2: set real credentials in data_service.py → UPSTOX_CONFIG / ZERODHA_CONFIG
-    API_OPTIONS = ["YFinance", "Upstox", "Zerodha"]
+    API_OPTIONS = ["YFinance", "Upstox", "Angel One", "Zerodha"]
     api_source = st.selectbox(
         "Select Data Source",
         options=API_OPTIONS,
