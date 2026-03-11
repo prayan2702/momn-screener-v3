@@ -280,7 +280,7 @@ def _build_wide_frames(symbol_dfs: dict) -> tuple:
 # Upstox daily data limit = 10 years per request
 # We use full 10 years but build DataFrames incrementally (no symbol_dfs dict)
 # so memory usage stays low — same pattern as YFinance chunk approach
-UPSTOX_MAX_LOOKBACK_MONTHS = 15  # 15 months — enough for 200DMA + 12M ROC, safe RAM
+UPSTOX_MAX_LOOKBACK_MONTHS = 120  # 120 months(10 year) — enough for 200DMA + 12M ROC, safe RAM
 
 
 def fetch_upstox(symbols, start_date, end_date, chunk_size, progress_bar, status_text):
