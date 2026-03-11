@@ -284,7 +284,17 @@ def fetch_angelone(symbols, start_date, end_date, chunk_size, progress_bar, stat
     if not client:
         progress_bar.progress(0.0)
         st.stop()
-        
+    # 👇 YAHAN PAR NAYA CAP LOGIC ADD KARNA HAI 👇
+    # ── MAX LIMIT OPTIMIZATION: CAP TO 2000 DAYS ───────────────
+    angelone_start = end_date - timedelta(days=2000)
+    if start_date < angelone_start:
+        st.sidebar.info(
+            f"Angel One API Limit: Date capped to {angelone_start.strftime('%d-%m-%Y')} "
+            f"(Max 2000 days per request allowed)"
+        )
+        start_date = angelone_start
+    # ───────────────────────────────────────────────────────────
+    # 👆 YAHAN TAK 👆    
     status_text.text("Angel One Token Validated. Fetching Master...")
     instrument_map = _load_angelone_instrument_map()
     if not instrument_map:
