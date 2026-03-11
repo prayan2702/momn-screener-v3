@@ -36,7 +36,8 @@ from data_service import fetch_data
 
 # Upstox sidebar login (show on every page load)
 from upstox_auth import get_upstox_access_token
-get_upstox_access_token(sidebar=True)
+from angelone_auth import get_angelone_client
+#get_upstox_access_token(sidebar=True)
 
 # ─────────────────────────────────────────────────────────────
 # Hard-coded app credentials
@@ -193,6 +194,12 @@ def app_content():
             "Add real credentials in data_service.py to activate."
         )
     )
+
+    # ── Handle Authentication Forms dynamically ─────────────────
+    if api_source == "Upstox":
+        get_upstox_access_token(sidebar=True)
+    elif api_source == "Angel One":
+        get_angelone_client(sidebar=True)
 
     # ── Lookback date ─────────────────────────────────────────────
     selected_date = st.date_input("Select Lookback Date", datetime.today())
