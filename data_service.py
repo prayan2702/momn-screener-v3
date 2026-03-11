@@ -21,6 +21,8 @@ import numpy as np
 import pandas as pd
 import yfinance as yf
 import streamlit as st
+import requests
+from angelone_auth import get_angelone_client
 from datetime import datetime, timedelta
 from dateutil.relativedelta import relativedelta
 
@@ -419,7 +421,154 @@ def fetch_zerodha(symbols, start_date, end_date, chunk_size, progress_bar, statu
     close, high, volume = _build_wide_frames(symbol_dfs)
     failed = [s for s, df in symbol_dfs.items() if df is None or df.empty]
     return close, high, volume, failed
+# ─────────────────────────────────────────────────────────────
+# SECTION I.5 — ANGEL ONE BULK FETCHER (LIVE)
+# ─────────────────────────────────────────────────────────────
+import pyotp
+from SmartApi import SmartConnect
 
+_ANGELONE_INSTRUMENT_MAP = None
+
+def _init_angelone_client():
+    """Initialize SmartConnect and login using credentials from secrets."""
+    try:
+        api_key = st.secrets["angelone"]["api_key"]
+        client_code = st.secrets["angelone"]["client_code"]
+        password = st.secrets["angelone"]["password"]
+        totp_secret = st.secrets["angelone"]["totp_secret"]
+    except KeyError:
+        st.error("Angel One credentials missing in `.streamlit/secrets.toml`.")
+        return None
+
+    try:
+        obj = SmartConnect(api_key=api_key)
+        totp = pyotp.TOTP(totp_secret).now()
+        data = obj.generateSession(client_code, password, totp)
+        
+        if data['status']:
+            return obj
+        else:
+            st.error(f"Angel One Login Failed: {data.get('message')}")
+            return None
+    except Exception as e:
+        st.error(f"Angel One initialization error: {e}")
+        return None
+
+def _load_angelone_instrument_map():
+    """Fetch and cache Angel One instrument master."""
+    global _ANGELONE_INSTRUMENT_MAP
+    if _ANGELONE_INSTRUMENT_MAP is not None:
+        return _ANGELONE_INSTRUMENT_MAP
+    
+    if "angelone_instrument_map" in st.session_state:
+        _ANGELONE_INSTRUMENT_MAP = st.session_state["angelone_instrument_map"]
+        return _ANGELONE_INSTRUMENT_MAP
+
+    url = "https://margincalculator.angelbroking.com/OpenAPI_File/files/OpenAPIScripMaster.json"
+    try:
+        st.sidebar.info("Downloading Angel One instrument master...")
+        response = requests.get(url, timeout=15)
+        data = response.json()
+        
+        # Filter for NSE EQ and create mapping: 'RELIANCE-EQ' -> '2885'
+        mapping = {}
+        for item in data:
+            if item['exch_seg'] == 'NSE' and item['symbol'].endswith('-EQ'):
+                clean_symbol = item['symbol'].replace('-EQ', '').upper()
+                mapping[clean_symbol] = item['token']
+                
+        _ANGELONE_INSTRUMENT_MAP = mapping
+        st.session_state["angelone_instrument_map"] = mapping
+        st.sidebar.success(f"Angel One master loaded - {len(mapping):,} NSE EQ symbols")
+        return mapping
+    except Exception as e:
+        st.sidebar.error(f"Angel One master load failed: {e}")
+        return {}
+
+def _fetch_angelone_history_live(client, token: str, start_date: datetime, end_date: datetime, retries=3):
+    """Fetch historical daily candles for a single symbol."""
+    historicParam = {
+        "exchange": "NSE",
+        "symboltoken": token,
+        "interval": "ONE_DAY",
+        "fromdate": start_date.strftime("%Y-%m-%d %H:%M"),
+        "todate": end_date.strftime("%Y-%m-%d %H:%M")
+    }
+    
+    delay = 1.0
+    for attempt in range(retries):
+        try:
+            resp = client.getCandleData(historicParam)
+            
+            # Rate limit checking (adjust based on Angel One limits, usually 3 requests/sec)
+            if resp.get('errorcode') == 'AB1014': # Example rate limit code
+                time.sleep(delay * 2)
+                delay *= 2
+                continue
+                
+            if resp.get('status') and resp.get('data'):
+                columns = ['timestamp', 'open', 'high', 'low', 'close', 'volume']
+                df = pd.DataFrame(resp['data'], columns=columns)
+                df['timestamp'] = pd.to_datetime(df['timestamp']).dt.tz_localize(None)
+                df.set_index('timestamp', inplace=True)
+                return df[['open', 'high', 'low', 'close', 'volume']]
+            return None
+            
+        except Exception:
+            if attempt == retries - 1:
+                return None
+            time.sleep(delay)
+            delay *= 2
+    return None
+
+def fetch_angelone(symbols, start_date, end_date, chunk_size, progress_bar, status_text):
+    """Bulk fetcher for Angel One, matching the Upstox memory-efficient pattern."""
+    client = _init_angelone_client()
+    if not client:
+        st.stop()
+        
+    instrument_map = _load_angelone_instrument_map()
+    if not instrument_map:
+        st.error("Could not load Angel One instrument master.")
+        st.stop()
+
+    close_map, high_map, vol_map = {}, {}, {}
+    failed, not_found = [], 0
+    total = len(symbols)
+
+    for i, sym in enumerate(symbols):
+        progress = (i + 1) / total
+        token = instrument_map.get(sym.upper().replace('.NS', ''))
+        
+        if not token:
+            not_found += 1
+            failed.append(sym)
+        else:
+            df = _fetch_angelone_history_live(client, token, start_date, end_date)
+            if df is not None and not df.empty:
+                idx = pd.to_datetime(df.index)
+                close_map[sym] = pd.Series(df['close'].values, index=idx)
+                high_map[sym]  = pd.Series(df['high'].values, index=idx)
+                vol_map[sym]   = pd.Series((df['close']*df['volume']).values, index=idx)
+            else:
+                failed.append(sym)
+
+        # Rate limiting control (Angel One allows ~3 req/sec for historical data)
+        time.sleep(0.35)
+
+        if i % 5 == 0 or i == total - 1:
+            progress_bar.progress(progress)
+            status_text.text(f"Angel One: {int(progress*100)}% | Fetched: {len(close_map)} | Failed: {len(failed)}")
+
+    progress_bar.progress(1.0)
+    status_text.text(f"Done - {len(close_map)}/{total} fetched | Not in master: {not_found}")
+
+    all_idx = pd.bdate_range(start=start_date, end=end_date)
+    close  = pd.DataFrame({s: v.reindex(all_idx) for s, v in close_map.items()}, index=all_idx)
+    high   = pd.DataFrame({s: v.reindex(all_idx) for s, v in high_map.items()},  index=all_idx)
+    volume = pd.DataFrame({s: v.reindex(all_idx) for s, v in vol_map.items()},   index=all_idx)
+
+    return close, high, volume, failed
 
 # ─────────────────────────────────────────────────────────────
 # SECTION J — UNIFIED ENTRY POINT
@@ -430,6 +579,8 @@ def fetch_data(api_source, symbols, start_date, end_date,
         return fetch_yfinance(symbols, start_date, chunk_size, progress_bar, status_text)
     elif api_source == "Upstox":
         return fetch_upstox(symbols, start_date, end_date, chunk_size, progress_bar, status_text)
+    elif api_source == "Angel One":
+        return fetch_angelone(symbols, start_date, end_date, chunk_size, progress_bar, status_text)
     elif api_source == "Zerodha":
         return fetch_zerodha(symbols, start_date, end_date, chunk_size, progress_bar, status_text)
     else:
