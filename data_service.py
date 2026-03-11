@@ -383,7 +383,7 @@ def fetch_angelone(symbols, start_date, end_date, chunk_size, progress_bar, stat
 
     # ── Rate limiter shared across all threads ───────────────
     # 2.8 req/sec (slightly under 3) for safety margin
-    rate_limiter = _TokenBucket(max_rate=2.8)
+    rate_limiter = _TokenBucket(max_rate=3.0)
 
     status_text.text(f"Angel One: Starting parallel fetch for {len(tasks)} symbols...")
 
@@ -391,7 +391,7 @@ def fetch_angelone(symbols, start_date, end_date, chunk_size, progress_bar, stat
     # Why 5? Angel One allows ~3 req/sec. With 5 threads, each thread
     # waits ~1.8s average. Threads spend most time waiting for network
     # response (~0.3-0.8s), so 5 workers keeps the pipeline full.
-    MAX_WORKERS = 5
+    MAX_WORKERS = 7
 
     with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
         future_map = {
