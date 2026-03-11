@@ -286,7 +286,7 @@ def fetch_angelone(symbols, start_date, end_date, chunk_size, progress_bar, stat
         st.stop()
     # 👇 YAHAN PAR NAYA CAP LOGIC ADD KARNA HAI 👇
     # ── MAX LIMIT OPTIMIZATION: CAP TO 2000 DAYS ───────────────
-    angelone_start = end_date - timedelta(days=400)
+    angelone_start = end_date - timedelta(days=2000)
     if start_date < angelone_start:
         st.sidebar.info(
             f"Angel One API Limit: Date capped to {angelone_start.strftime('%d-%m-%Y')} "
