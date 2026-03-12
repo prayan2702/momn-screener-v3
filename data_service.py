@@ -383,7 +383,7 @@ def fetch_angelone(symbols, start_date, end_date, chunk_size, progress_bar, stat
 
     # ── Rate limiter shared across all threads ───────────────
     # 2.8 req/sec (slightly under 3) for safety margin
-    rate_limiter = _TokenBucket(max_rate=2.8)
+    rate_limiter = _TokenBucket(max_rate=2.5)
 
     status_text.text(f"Angel One: Starting parallel fetch for {len(tasks)} symbols...")
 
